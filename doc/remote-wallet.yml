@@ -1,0 +1,538 @@
+openapi: "3.0.2"
+info:
+  title: Remote Wallet API
+  description: |
+    Remote Wallet Service 远程钱包服务
+
+    ## Preparation 准备
+      - api url: url of remote wallet service 提供远程钱包服务的url
+      - auth_token: fixed password 固定密码
+      - sign key: fixed sign key 签名密钥
+
+    ## How to Sign 签名
+
+    - sort by key name (a-z) 按名字排序，字母正序
+    	- don't sort by value
+    - concat all non-empty values without array/object type. 拼接所有的非空内容，要去掉数组/对象类型
+      - boolean: only `true/false` ，只使用 `true/false`
+      - float/number: remove last 0 on decimal. 去掉小数部分末尾的0
+        - example: `1.90` to `1.9`
+    - append sign key to last. 把 sign key 放到最后
+    - use sha1 to generate sign. 使用sha1产生签名
+
+    ### PHP Example Code 代码样例
+    ```php
+      function generateSign($fields, $signKey, $except=['sign']){
+        $signString=getSignString($fields, $except);
+        if(empty($signString)){
+          return ['',''];
+        }
+        $sign=strtolower(sha1($signString.$signKey));
+        return [$sign, $signString];
+      }
+
+      function getSignString($fields, $except=['sign']){
+        $params=[];
+        foreach ($fields as $key => $value) {
+          if( in_array($key, $except) || is_array($value)){
+            continue;
+          }
+          if(is_bool($value)){
+            $value=$value ? 'true' : 'false';
+          }
+          $params[$key]=$value;
+        }
+
+        if(empty($params)){
+          return '';
+        }
+
+        ksort($params);
+
+        return implode('', array_values($params));
+      }
+    ```
+
+    ## Changes 修改记录
+
+    - 1.01, init, add query_balance, increase_balance, decrease_balance
+    - 1.02, change result code to integer
+    - 1.03, add uniqueid on request, add CODE_DOUBLE_UNIQUEID
+    - 1.04, add `/batch_update`
+    - 1.05, add `bet_amount` and `payout_amount` for `bet-payout` action type, add more code, add `bet-payout` and `adjustment`
+    - 1.06, add `is_end` to `/increase_balance` and `/decrease_balance`
+
+    ## Result Code 返回代码
+
+    ```php
+    const CODE_SUCCESS=0;  // 成功
+    const CODE_INVALID_SIGN=1;  // 签名失败
+    const CODE_INVALID_AUTH_TOKEN=2;  // 错误的auth_token
+    const CODE_INVALID_CURRENCY=3;  // 错误的currency
+    const CODE_INVALID_WHITE_IP=4;  // 不在ip白名单内
+    const CODE_NO_PERMISSION=5;  // 没权限
+    const CODE_INVALID_USERNAME=6;  // 错误的username
+    const CODE_INVALID_AMOUNT=7;  // 错误的amount
+    const CODE_DOUBLE_UNIQUEID=8;  // 重复的 uniqueid
+    const CODE_INVALID_UNIQUEID=9;  // 错误的 uniqueid
+    const CODE_INSUFFICIENT_BALANCE=10;  // 余额不足
+    const CODE_REMOTE_WALLET_MAINTENANCE=11; // 正在维护状态
+    const CODE_INVALID_GAME_PLATFORM_ID=12;  // 错误的game_platform_id
+    const CODE_INVALID_GAME_UNIQUE_ID=13;  // 错误的game_unique_id
+    const CODE_THIS_GAME_IS_NOT_AVAILABLE=14; // 游戏目前无法使用
+
+    //system
+    const CODE_INVALID_REQUEST=9997;  // 错误的请求
+    const CODE_LOCK_FAILED=9998;  // 锁定失败，每次请求必须锁定余额，避免错误更新
+    const CODE_INTERNAL_ERROR=9999;  // 内部错误
+    ```
+
+    ## Action Type 请求类型
+      - bet
+      - payout
+      - refund
+      - cancel: it's refund.
+      - "bet-payout"
+      - adjustment: event or tournament
+
+    ## uniqueid format 唯一编号格式
+      - from game provider: `game-<game platform id>-<unique id from game platform>`
+        - request from game provider, 来自游戏商请求
+      - from gateway: `req-<unique id from gateway>`
+        - manually adjust balance, 人工调整余额
+      - remote_wallet.uniqueid=game_history.external_uniqueid and remote_wallet.game_platform_id=game_history.game_platform_id
+        - NOTICE: remove `game-` from remote_wallet.uniqueid. 注意: remote_wallet.uniqueid去掉 `game-` 前缀
+      - remote_wallet.game_uniqueid=game_history.game_code, it's for single game. 这是指单个游戏
+      - return CODE_DOUBLE_UNIQUEID=8 if uniqueid exists, 如果 uniqueid 存在，返回 CODE_DOUBLE_UNIQUEID=8
+
+    ## round_id 局号
+      - it's not unqiue, could be duplicated, 不是唯一的，可能重复
+      - 2 different players could have same round_id, 2个不同的玩家可能有相同的局号
+      - game_platform_id+round_id means a round of game, game_platform_id+round_id代表一局游戏
+      - `is_end` will be true when round is end, 当局结束时，`is_end` 为true
+
+    ## request_id
+
+    it's an unique id for each request, it's really internal id of remote wallet service, it's used for debug.
+    每次请求都有一个唯一id，这是远程钱包服务的内部id，用于调试
+
+    for example, you can use it to find the log of this request when we debug something.
+    例如，当我们调试的时候，可以用这个id找到这次请求的日志
+
+  version: "1.06"
+servers:
+  - url: http://admin.remotewallet.local/remote-wallet
+    description: local
+
+components:
+  schemas:
+    #==== request model========================
+    query_balance_request:
+      type: object
+      properties:
+        username_with_prefix:
+          type: string
+          maxLength: 250
+          description: |
+            player username with prefix, should be unique. 用户名带前缀，必须是唯一的
+        currency:
+          type: string
+          maxLength: 10
+        uniqueid:
+          type: string
+          maxLength: 200
+          description: |
+            request unique id, please check if exists
+
+            每次请求有唯一id, 需要检查是否重复请求
+        round_id:
+          type: string
+          maxLength: 200
+          description: |
+            round id of game. 游戏的局号
+        game_platform_id:
+          type: integer
+        game_unique_id:
+          type: string
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 40
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+      required:
+        - sign
+        - auth_token
+        - currency
+        - username_with_prefix
+        - uniqueid
+    GameInfoRequest:
+      type: object
+      properties:
+        game_platform_id:
+          type: integer
+          description:
+            game platform id 游戏商ID
+        game_unique_id:
+          type: string
+          description:
+            unique id of game. 游戏的唯一编号
+        uniqueid:
+          type: string
+          maxLength: 200
+          description: |
+            request unique id, please check if exists. or client can ignore it since it's readonly.
+
+            每次请求有唯一id, 需要检查是否重复请求
+        round_id:
+          type: string
+          maxLength: 200
+          description: |
+            round id of game. 游戏的局号
+        action_type:
+          $ref: "#/components/schemas/ActionType"
+    increase_balance_request:
+      allOf:
+        - $ref: "#/components/schemas/GameInfoRequest"
+        - type: object
+          properties:
+            username_with_prefix:
+              type: string
+              maxLength: 250
+              description: |
+                player username with prefix, should be unique. 用户名带前缀，必须是唯一的
+            amount:
+              type: string
+              description: |
+                only allow positive. 只允许正数
+            bet_amount:
+              type: string
+              description: |
+                only allow positive. 只允许正数
+
+                only when action_type='bet-payout'
+            payout_amount:
+              type: string
+              description: |
+                only allow positive. 只允许正数
+
+                only when action_type='bet-payout'
+            currency:
+              type: string
+              maxLength: 10
+            sign:
+              type: string
+              minLength: 40
+              maxLength: 40
+            auth_token:
+              type: string
+              minLength: 32
+              maxLength: 64
+            is_end:
+              type: boolean
+          required:
+            - sign
+            - auth_token
+            - currency
+            - username_with_prefix
+            - amount
+            - uniqueid
+    decrease_balance_request:
+      allOf:
+        - $ref: "#/components/schemas/GameInfoRequest"
+        - type: object
+          properties:
+            username_with_prefix:
+              type: string
+              maxLength: 250
+              description: |
+                player username with prefix, should be unique. 用户名带前缀，必须是唯一的
+            amount:
+              type: string
+              description: |
+                only allow positive. 只允许正数
+            bet_amount:
+              type: string
+              description: |
+                only allow positive. 只允许正数
+
+                only when action_type='bet-payout'
+            payout_amount:
+              type: string
+              description: |
+                only allow positive. 只允许正数
+
+                only when action_type='bet-payout'
+            currency:
+              type: string
+              maxLength: 10
+            sign:
+              type: string
+              minLength: 40
+              maxLength: 40
+            auth_token:
+              type: string
+              minLength: 32
+              maxLength: 64
+            is_end:
+              type: boolean
+          required:
+            - sign
+            - auth_token
+            - currency
+            - username_with_prefix
+            - amount
+            - uniqueid
+    batch_update_request:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/GameInfoRequest"
+              - type: object
+                properties:
+                  update_type:
+                    type: string
+                    enum:
+                      - increase
+                      - decrease
+                  username_with_prefix:
+                    type: string
+                    maxLength: 250
+                    description: |
+                      player username with prefix, should be unique. 用户名带前缀，必须是唯一的
+                  amount:
+                    type: string
+                    description: |
+                      only allow positive. 只允许正数
+                  bet_amount:
+                    type: string
+                    description: |
+                      only allow positive. 只允许正数
+
+                      only when action_type='bet-payout'
+                  payout_amount:
+                    type: string
+                    description: |
+                      only allow positive. 只允许正数
+
+                      only when action_type='bet-payout'
+                  currency:
+                    type: string
+                    maxLength: 10
+                  sign:
+                    type: string
+                    minLength: 40
+                    maxLength: 40
+                  auth_token:
+                    type: string
+                    minLength: 32
+                    maxLength: 64
+                required:
+                  - sign
+                  - auth_token
+                  - currency
+                  - username_with_prefix
+                  - amount
+                  - uniqueid
+                  - update_type
+
+    #==== result model========================
+    BaseResult:
+      type: object
+      properties:
+        code:
+          type: integer
+        request_id:
+          type: string
+          description:
+            unique id of this request for debug
+
+            本次请求的唯一id，用于调试
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+      required:
+        - code
+        - request_id
+        - server_time
+    query_balance_result:
+      allOf:
+        - $ref: "#/components/schemas/BaseResult"
+        - type: object
+          properties:
+            detail:
+              type: object
+              properties:
+                balance:
+                  type: number
+              required:
+                - balance
+          required:
+            - detail
+    increase_balance_result:
+      allOf:
+        - $ref: "#/components/schemas/BaseResult"
+        - type: object
+          properties:
+            detail:
+              type: object
+              properties:
+                balance:
+                  type: number
+              required:
+                - balance
+          required:
+            - detail
+    decrease_balance_result:
+      allOf:
+        - $ref: "#/components/schemas/BaseResult"
+        - type: object
+          properties:
+            detail:
+              type: object
+              properties:
+                balance:
+                  type: number
+              required:
+                - balance
+          required:
+            - detail
+    batch_update_result:
+      allOf:
+        - $ref: "#/components/schemas/BaseResult"
+        - type: object
+          properties:
+            detail:
+              type: object
+              properties:
+                success_list:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      uniqueid:
+                        type: string
+                      success:
+                        type: boolean
+                    required:
+                      - uniqueid
+                      - success
+                balance_list:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      balance:
+                        type: number
+                      username_with_prefix:
+                        type: string
+                    required:
+                      - balance
+                      - username_with_prefix
+          required:
+            - detail
+    ActionType:
+      description: see Action Type part above, 看上面的 Action Type这部分
+      type: string
+      enum:
+        - bet
+        - payout
+        - refund
+        - cancel
+        - bet-payout
+        - adjustment
+  securitySchemes:
+    DebugSignKey:
+      type: apiKey
+      in: query
+      name: X-DEBUG-SIGN-KEY
+
+security:
+  - DebugSignKey: []
+
+paths:
+  /query_balance:
+    post:
+      summary: Query balance 查询余额
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/query_balance_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/query_balance_result"
+
+  /increase_balance:
+    post:
+      summary: Increase balance 添加余额
+      description: |
+        Increase balance 添加余额
+
+        return CODE_DOUBLE_UNIQUEID=8 if uniqueid exists, 返回 CODE_DOUBLE_UNIQUEID=8 如果 uniqueid 存在
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/increase_balance_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/increase_balance_result"
+  /decrease_balance:
+    post:
+      summary: Decrease balance 减少余额
+      description: |
+        Decrease balance 减少余额
+
+        return CODE_DOUBLE_UNIQUEID=8 if uniqueid exists, 返回 CODE_DOUBLE_UNIQUEID=8 如果 uniqueid 存在
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/decrease_balance_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/decrease_balance_result"
+  /batch_update:
+    post:
+      summary: batch update balance 批量更新余额
+      description: |
+        batch update balance 批量更新余额
+
+        max rows: 50
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/batch_update_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/batch_update_result"

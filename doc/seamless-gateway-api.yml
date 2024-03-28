@@ -1,0 +1,2386 @@
+openapi: "3.0.2"
+info:
+  title: Seamless Gateway API
+  description: |
+    Seamless Gateway API 无缝网关API
+
+    ## How to Sign 签名
+
+    - sort by key name (a-z) 按名字排序，字母正序
+    	- don't sort by value
+    - concat all non-empty values without array/object type. 拼接所有的非空内容，要去掉数组/对象类型
+      - boolean: only `true/false` ，只使用 `true/false`
+      - float/number: remove last 0 on decimal. 去掉小数部分末尾的0
+        - example: `1.90` to `1.9`
+    - append sign key to last. 把 sign key 放到最后
+    - use sha1 to generate sign. 使用sha1产生签名
+
+    ### PHP Example Code  样例代码
+    ```php
+      function generateSign($fields, $signKey, $except=['sign']){
+        $signString=getSignString($fields, $except);
+        if(empty($signString)){
+          return ['',''];
+        }
+        $sign=strtolower(sha1($signString.$signKey));
+        return [$sign, $signString];
+      }
+
+      function getSignString($fields, $except=['sign']){
+        $params=[];
+        foreach ($fields as $key => $value) {
+          if( in_array($key, $except) || is_array($value)){
+            continue;
+          }
+          if(is_bool($value)){
+            $value=$value ? 'true' : 'false';
+          }
+          $params[$key]=$value;
+        }
+
+        if(empty($params)){
+          return '';
+        }
+
+        ksort($params);
+
+        return implode('', array_values($params));
+      }
+    ```
+
+    ## How to use API 如何使用API
+
+    - get `merchant_code` and `secure_key` from gateway side. 从网关获取 `merchant_code` 和 `secure_key`
+    - call `/generate_token` to get `auth_token`. 调用 `/generate_token` 获取 `auth_token`
+    - call `/query_game_list` to get game list. 调用 `/query_game_list` 获取游戏列表
+    - call `/create_player` to create player. 调用 `/create_player` 创建玩家
+    - support remote wallet api. 支持远程钱包api
+      - create remote wallet service on merchant side. 在商户端创建远程钱包服务
+      - send white ip and remote wallet service info (url, key) to gateway side. 发送白名单ip和远程钱包服务信息（url, key）到网关
+      - gateway side setup remote wallet service for merchant. 网关端为商户设置远程钱包服务
+    - call `/query_game_launcher` to launch game. 调用 `/query_game_launcher` 运行游戏
+    - go to url then play game. 打开链接玩游戏
+    - call `/query_multiple_platform_game_history` to get game history. 调用 `/query_multiple_platform_game_history` 获取游戏记录
+
+    ### Game Launcher 游戏运行
+
+    - call `/query_game_launcher` to get game url. 调用 `/query_game_launcher` 获取游戏链接
+    - if `code`!=0, show error message. 如果 `code`!=0, 显示错误信息
+    - get launcher url, then launch url inside iframe .if get error: postMessage to parent window. 获得游戏链接，在iframe里运行链接。如果遇到错误： postMessage 到父窗口
+      - message format 消息格式
+      ```json
+      {
+        "error": "",
+        "action": {
+          "type": "close"/"redirect"/"reload",
+          "url": "only for redirect"
+        }
+      }
+      ```
+        - `error`: should be i18n, 应该是国际化的
+        - `type`
+          - `close`: close game launcher window, 关闭游戏启动器窗口
+          - `redirect`: redirect to url, 重定向到url
+          - `reload`: reload game launcher, 重新加载游戏启动器
+        - `url`: it's optional, only for redirect. 是可选的，只有在重定向的时候才有
+      - example 样例
+        ```json
+        {
+          "error": "Token is timeout",
+          "action": {
+            "type": "close"
+          }
+        }
+        ```
+
+    ## Changes 变更
+
+      - 1.01 init
+      - 1.02 change result code to integer
+      - 1.03 add more code, fix some errors
+      - 1.04 add `lock_when_create_player_account` on `create_player`
+      - 1.05 add `query_game_list`
+      - 1.06 add `query_player_status`
+      - 1.07 add `/query_game_lobby_launcher`
+      - 1.08 add `/query_remote_wallet_transaction`
+      - 1.09 add `launcherMode`
+      - 1.10 add `timezone` on `/generate_token`
+      - 1.11 add freeround api, for free spin or free bet, it's a kind of bonus which support by game provider
+      - 1.12 add `screen_mode`, `demo_enable` to `/query_game_list`
+      - 1.13 add `total` to `query_game_list`
+      - 1.14 add `image_mode` to `query_game_list`
+      - 1.14.4 change `status` to `game_history_status` in `/query_multiple_platform_game_history`
+      - 1.15 add `last_update_time` to `query_game_list`, query game list by last update time
+      - 1.16 add `/query_game_platform_list` and `lobby_list` in `/ganerate_token`
+
+    ## Result Code 返回结果代码
+
+    ```php
+      const CODE_SUCCESS=0;  // 成功
+      const CODE_INVALID_SIGN=1;  // 错误的签名
+      const CODE_INVALID_AUTH_TOKEN=2;  // 错误的auth_token
+      const CODE_INVALID_CURRENCY=3;  // 错误的 currency
+      const CODE_INVALID_WHITE_IP=4;  // 不在ip白名单内
+      const CODE_NO_PERMISSION=5;  // 无权限
+      const CODE_AGENT_IS_SUSPENDED=6;  // 商户已经挂起
+      const CODE_AGENT_IS_FROZEN=7;  // 商户被冻结
+      const CODE_AGENT_IS_INACTIVE=8;  // 商户没有激活
+      const CODE_INVALID_SECURE_KEY=9;  // 错误的 secure_key
+      const CODE_INVALID_USERNAME=10;  // 错误的 username
+      const CODE_USERNAME_DOES_NOT_BELONG_MERCHANT=11;  // 这个username不属于此商户
+      const CODE_INVALID_PASSWORD=12;  //  错误的密码
+      const CODE_DUPLICATE_USERNAME=13;  // 重复的username, username已存在
+      const CODE_INVALID_GAME_MODE=14;  // 错误的 game_mode
+      const CODE_LOAD_GAME_API_FAILED=15;  // 载入游戏API失败
+      const CODE_GAME_PLATFORM_ON_MAINTENANCE=16;  // 游戏商正在维护状态
+      const CODE_GAME_PLATFORM_IS_DISABLED=17;  // 游戏商已经被禁用
+      const CODE_INVALID_GAME_PLATFORM_ID=18;  //  错误的 game_platform_id
+      const CODE_NO_ACTIVE_GAME_PLATFORM_IN_AGENT=19;  //  商户内没有激活游戏商
+      const CODE_NO_PERMISSION_ON_GAME_PLATFORM=20;  //  无权限使用此游戏商
+      const CODE_NOT_FOUND_GAME_UNIQUE_ID=21;  //  找不到 game_unique_id
+      const CODE_PLAYER_IS_BLOCKED_IN_GAME=22;  //  玩家在此游戏内已经被禁用
+      const CODE_EXTERNAL_API_ERROR=23;  //  游戏api错误
+      const CODE_INVALID_FROM_DATE_TIME=24;  //   from 中错误的日期时间格式
+      const CODE_INVALID_TO_DATE_TIME=25;  // to 中错误的日期时间格式
+      const CODE_INVALID_SIZE_PRE_PAGE=26;  //  错误的 size_per_page
+      const CODE_INVALID_PAGE_NUMBER=27;  //  错误的 page_number
+      const CODE_INVALID_GAME_HISTORY_STATUS=28;  //  错误的 game_history_status
+      const CODE_INVALID_DATE_MODE=29;  // 错误的 date_mode
+      const CODE_INVALID_MULTIPLE_GAME_PLATFORM=30; // 错误的 multiple_game_platform
+      const CODE_INVALID_BET_DETAIL_ID=31;  // 错误的 bet_detail_id
+      const CODE_INVALID_MERCHANT_CODE=32;  // 错误的 merchant_code
+      const CODE_INVALID_CATEGORY_MODE=33;  // 错误的 category_mode
+      const CODE_INVALID_IS_MOBILE=34;  // 错误的 is_mobile
+      const CODE_NOT_FOUND_REMOTE_WALLET_UNIQUEID=35;  // 找不到远程钱包 uniqueid
+      const CODE_UNIQUEID_IS_REQUIRED=36;  // uniqueid 是必须的
+      const CODE_USERNAME_NOT_EXIST=37;  // username 不存在
+      const CODE_INVALID_PLAYER_PREFIX=38;  // 错误的玩家前缀
+      const CODE_INVALID_FREE_ROUND_EXPIRATION_DATE=39; // 错误的免费投注过期时间
+      const CODE_GAME_PLATFORM_DOESNT_SUPPORT_FREE_ROUND_BONUS=40; // 游戏商不支持免费投注
+      const CODE_INVALID_FREE_ROUND_TRANSACTION_ID=41; // 错误的免费投注交易id
+      const CODE_GAME_PLATFORM_DOES_NOT_SUPPORT_BET_DETAIL_LINK=42;
+      const CODE_UNIMPLEMENTED=43;
+
+      //system
+      const CODE_INVALID_REQUEST=9997;  // 错误的请求
+      const CODE_LOCK_FAILED=9998;  // 锁定失败
+      const CODE_INTERNAL_ERROR=9999;  //  内部错误
+    ```
+
+    ## Response 返回结果
+
+    - code: result code, see result code part. 返回结果代码, 请看返回结果代码部分
+    - version: api version, api版本
+    - request_id: request id, it's unique id for each request, for trace or debug. 请求id，每个请求都有唯一的id, 用于追踪或调试
+    - server_time: current server time, format: `2022-10-01 10:00:00` 当前服务器时间
+    - cost: cost of api, unit is ms. api耗时，单位是毫秒
+    - detail: depends on api, 根据api不同而不同
+
+    ## Language of game 游戏语言
+
+    ### `language` in `/query_game_launcher`
+
+      - en-us : english
+      - zh-cn : chinese
+      - id-id : indo
+      - vi-vn : vietnamese
+      - ko-kr : korean
+      - th-th : thailand
+      - pt : portuquese
+      - [default] : english
+
+    ### language in `/query_game_list`
+
+      - en : english
+      - cn : chinese
+      - id : indo
+      - vt : vietnamese
+      - kr : korean
+      - th : thailand
+      - in : india
+      - pt : portuquese
+      - es : spanish
+      - kk : kazakh
+
+    ### language in `/query_multiple_platform_game_history`
+
+      - 1 : english
+      - 2 : chinese
+      - 3 : indo
+      - 4 : vietnamese
+      - 5 : korean
+      - 6 : thailand
+      - 7 : india
+      - 8 : portuquese
+      - 9 : spanish
+      - 10 : kazakh
+
+    ## Definitions 定义
+
+    ### username 用户名
+
+      - username means player username. username 指的是玩家用户名
+      - username is unique in merchant/game platform/gateway. username 在商户/游戏商/网关内是唯一的
+      - username is case insensitive. username 不区分大小写
+      - username is always with prefix, gateway will set the prefix of player to merchant. username 总是有前缀的, 网关会把玩家的前缀设置给商户
+
+    ### a specific game 一个游戏 = `game_platform_id` + `game_unique_id`
+
+      - `game_platform_id`: game platform/game provider id 游戏平台/游戏商id. sample:
+      - `game_type_code`: game type code 游戏类型代码
+        - casino, slots, lottery, fishing_game, table_games, card_games, sports, e_sports, virtual_sports, arcade, horse_racing, racing, video_poker, poker, mini_games, cock_fight, chess, dingdong, shooting_games, live_dealer, others
+      - `game_unique_id`: game unique id 游戏唯一id
+
+    ### Auth 身份验证
+
+      most of api should append 3 parameters, 大多数API需要有这三个参数
+
+      - `auth_token`: it's from `/generate_token`, use `merchant_code` and `secure_key` to create auth_token. seamless gateway will send `merchant_code` and `secure_key` to merchant. 来自`/generate_token`, 使用`merchant_code` 和 `secure_key` 生成 `auth_token`。游戏网关会给商户分配`merchant_code` 和 `secure_key`
+      - `merchant_code`: merchant is a client who integrate seamless gateway, 商户是指接入游戏网关的客户
+      - `currency`: 货币
+
+      only for `/generate_token`, 只在 `/generate_token`
+
+      - `secure_key`: merchant has one secure key. 商户有一个安全秘钥
+
+    ### Datetime 日期时间
+
+    - format 格式: `2022-10-01 10:00:00`
+    - timezone 时区: local timezone 本地时区, asia 亚洲 = UTC+8, south america 南美 = UTC-3
+
+    ## Game List 游戏列表
+
+      - `category_mode` : `none` , `game_type_first` , `game_platform_first`. will affect response, 会影响返回结果
+      ```
+        if category_mode is none then
+          return [{game info}, {game info}]
+        if category_mode is game_type_first then
+          return {
+            <game type>:{
+              <game platform id>: [
+                {game info}, {game info}
+              ]
+            }
+          }
+        if category_mode is game_platform_first then
+          return {
+            <game platform id>:{
+              <game type>: [
+                {game info}, {game info}
+              ]
+            }
+          }
+      ```
+      - `image_mode` : `landscape` 横屏 , `portrait` 竖屏
+      - `screen_mode` : `landscape` 横屏 , `portrait` 竖屏, `both` 都支持
+      - `game_type_name` : array of multiple langauge for game type name 游戏类型名字的多语言数组. format: `<lang key>=><name>`
+      	- lang key: 'en','cn','id','vt','kr','th','in','pt','es','kk', see language part, 请看语言部分
+
+    ### Status 状态
+      - `status`: 1=enabled, 0=disabled, 1=启用, 0=禁用。
+      - `enabled_in_website`: 1=enabled, 0=disabled, 1=启用, 0=禁用。actually it's for player, if show it to player. 实际上是给玩家用，是否显示给玩家
+      - `status`, `enabled_in_website`
+        - status=1 and enabled_in_website=1: enabled and show to player 启用并显示给玩家
+        - status=0 and enabled_in_website=1: disabled and don't show to player 禁用并不显示给玩家
+        - status=1 and enabled_in_website=0: enabled but don't show to player, could use it to sync game history 启用但不显示给玩家, 可以用来同步游戏记录
+        - status=0 and enabled_in_website=0: disabled and don't show to player 禁用并不显示给玩家
+
+    ## Remote Wallet 远程钱包
+
+    - Match increase/decrease balance with game history 匹配增加/减少余额和游戏记录
+      - remote_wallet.uniqueid=game_history.external_uniqueid and remote_wallet.game_platform_id=game_history.game_platform_id
+        - NOTICE: remove `game-` from remote_wallet.uniqueid. 注意: remote_wallet.uniqueid去掉 `game-` 前缀
+      - remote_wallet.game_uniqueid=game_history.game_code, it's for single game. 这是指单个游戏
+
+    ## Game History 游戏记录
+
+    ### NOTES 注意
+
+    #### Parameters 参数
+
+    - `date_mode` is required 日期模式是必须的
+    - `multiple_game_platform` is required `multiple_game_platform` 是必须的
+    - `game_history_status` is optional, default is `all` `game_history_status` 是可选的，默认是 `all`
+    - `from` is required, `from` 是必须的
+    - `to` is required, `to` 是必须的， `to` - `from` < 2 hours, `to` - `from` < 2小时
+    - `size_per_page` is optional, default is `20` `size_per_page` 是可选的，默认是 `20`
+    - `page_number` is optional, default is `1` `page_number` 是可选的，默认是 `1`
+    - `status` is optional, default is `normal` `status` 是可选的，默认是 `normal`
+
+    #### Response 返回结果
+
+    - `total` is total count of game history, `total` 是游戏记录的总数
+    - `page_number` is current page number, `page_number` 是当前页码
+    - `size_per_page` is size per page, `size_per_page` 是每页的数量
+    - `game_history` is game history list, `game_history` 是游戏记录列表
+
+    #### Columns 栏位
+
+    - uniqueid: it's unique id on game record 游戏记录的唯一id
+    - username: real username on game provider 游戏商里的真实用户名
+    - player_username: player username on gateway 网关里的玩家用户名
+    - merchant_code: merchant code 商户代码
+    - game_platform_id: game platform id 游戏商id
+    - game_code: single game code 单个游戏代码
+    - game_name: single game name 单个游戏名字, format: “_json:{\”1\”:\”Baccarat\”,\”2\”:\”\u767e\u5bb6\u4e50\”}”, see language part, 请看语言部分
+    - game_details: game note 游戏备注
+    - game_finish_time: game finish time 游戏结束时间
+    - bet_details: bet details, depends on game platform 投注详情, 根据游戏商不同而不同
+    - bet_time: bet time 投注时间
+    - payout_time: payout time 派彩时间
+    - updated_at: last update time 最后更新时间
+    - round_number: round number 局号
+    - real_bet_amount: real bet amount 真实投注金额
+    - effective_bet_amount: effective bet amount, depends on game platform 有效投注金额, 根据游戏商不同而不同
+    - result_amount: result amount 结果金额. result_amount=payout_amount-real_bet_amount
+    - payout_amount: payout amount 派彩金额
+    - rent: rent, only for few game platform.  租金/抽水, 只有少数游戏商有
+    - odds: odds, only for few game platform. 赔率, 只有少数游戏商有
+    - after_balance: after balance. 结果后的余额
+    - game_external_uniqueid: game record external unique id, max length: 200. 游戏商的游戏记录唯一id
+    - external_uniqueid: game_platform_id + '-' + game_external_uniqueid, max length: 205
+    - md5_sum: md5 sum of game record. 游戏记录的md5值
+    - ip_address: ip address. ip地址
+    - bet_type: bet type, depends on game platform. 投注类型, 根据游戏商不同而不同
+    - odds_type: odds type, depends on game platform. 赔率类型, 根据游戏商不同而不同
+    - update_version: update version, start from 0. 更新版本, 从0开始
+    - game_status: game status, normal/others. 游戏状态, 正常/其他
+    - detail_status: detail status, 1=settled, 2=pending, 3=accepted, 4=rejected, 5=cancelled, 6=void, 7= refund, 8=settled no payout, 9=unsettled. it's from game platform
+
+  version: "1.15"
+servers:
+  - url: http://admin.seamlessgateway.local/seamless-gateway
+    description: local
+
+security:
+  - DebugSignKey: []
+
+paths:
+  /ping:
+    post:
+      summary: PING 用于测试api
+      description:
+        ping 用于测试api
+      tags:
+        - public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ping_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ping_result"
+
+  /generate_token:
+    post:
+      summary: Generate token 生成token
+      description: |
+        Generate token 生成token
+
+        ## request 请求
+        - force_new: true/false, default is false. true=force generate new token, false=use old token if exist. true=强制生成新的token, false=如果有旧的token就使用旧的token
+
+        ## response 返回
+        - auth_token: auth token 身份验证token
+        - timeout_datetime: time time 过期时间
+        - timezone: timezone 时区
+        - player_prefix: player prefix 玩家前缀
+        - available_games: available game platform 可用游戏商列表
+          - launcher_mode
+            - lobbyAndSingle : allow lobby and single game 允许大厅和单个游戏
+            - lobbyOnly : only allow lobby  只允许大厅
+            - singleOnly : only allow single  只允许单个游戏
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/generate_token_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/generate_token_result"
+  /query_game_platform_list:
+    post:
+      summary: Query game platform list 查询游戏商列表
+      description: |
+        Query game platform list 查询游戏商列表
+      tags:
+        - game
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/query_game_platform_list_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/query_game_platform_list_result"
+  /create_player:
+    post:
+      summary: Create player 创建玩家
+      description: |
+        Create player 创建玩家
+
+        - lock_when_create_player_account: lock creating player when create player account 创建玩家账号时锁定创建玩家功能
+      tags:
+        - player
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/create_player_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/create_player_result"
+
+  /query_game_launcher:
+    post:
+      summary: Launch game 运行游戏
+      description: |
+        Launch game 运行游戏
+
+        ## request 参数
+
+        - username: username 用户名
+        - is_mobile: true/false, default is false. true=mobile, false=desktop. true=手机, false=电脑
+        - game_mode: real/trial/tournament, default is real. real=real money, trial=free money. real=真钱, trial=免费
+        - extra_settings
+          - is_redirect: true/false, default is false. true=launch game with redirect, false=launch game with iframe. true=重定向到游戏链接, false=游戏运行在iframe里
+          - home_link: home link 回首页链接
+          - cashier_link: cashier link 收银台链接
+          - logo_link: logo link logo链接
+          - on_error_redirect: on error redirect url 错误时重定向的url
+          - try_get_real_url: true/false, default is false. true=try to get real url, false=use game url. true=尝试获取真实的游戏链接, false=使用网关链接
+
+        ## response 参数
+
+        - launcher
+          - url: game url 游戏链接
+      tags:
+        - game
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/query_game_launcher_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/query_game_launcher_result"
+
+  /query_game_lobby_launcher:
+    post:
+      summary: Launch game lobby 运行游戏大厅
+      tags:
+        - game
+      description: |
+        Launch game lobby 运行游戏大厅
+
+        lobby_mode:
+
+        - game_platform: there's a big lobby in game provider, launch with nothing  游戏商自带大厅
+        - game_type: some game types have a lobby, launch with game_type_code  游戏商里不同的游戏类型有自带大厅
+        - local: gateway lobby on some slots game (not support yet)  自制的游戏大厅，不是游戏商提供的 (暂时不提供)
+
+        others: see `/query_game_launcher` 其他参数请看 `/query_game_launcher`
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/query_game_lobby_launcher_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/query_game_lobby_launcher_result"
+
+  /query_bet_detail_link:
+    post:
+      summary: query bet detail link 查询注单详情链接
+      description: |
+        query bet detail link 查询注单详情链接
+
+        it's optional, if game provider support it. 如果游戏商支持的话，这个是可选的
+
+        ## request 参数
+
+        - username: username 用户名
+        - bet_detail_id: bet detail id (from game history) 注单详情id (来自游戏记录)
+      tags:
+        - game
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/query_bet_detail_link_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/query_bet_detail_link_result"
+
+  /query_multiple_platform_game_history:
+    post:
+      summary: query multiple platform game history 查询游戏记录，允许同时查询多个游戏商
+      description: |
+        query multiple platform game history 查询游戏记录，允许同时查询多个游戏商
+
+        real time/auto sync 实时/自动同步: set date_mode to `by_last_update_time` 设置 date_mode 为 `by_last_update_time`
+        manually sync 手动同步: set date_mode to `by_bet_time` 设置 date_mode 为 `by_bet_time`
+
+        ## request 参数
+
+        - date_mode: by_last_update_time/by_bet_time 最后更新时间/投注时间
+        - multiple_game_platform: multiple game platform 多个游戏商
+        - from/to: from/to date time, format: `2022-10-01 10:00:00`, should be <2 hours. 时间范围, 格式: `2022-10-01 10:00:00`, 时间范围不能超过2小时
+        - size_per_page: size per page, 10<=size_per_page<=5000. 每页数量, 10<=size_per_page<=5000
+        - page_number: page number, default is 1. 页码, 默认是1
+        - status: `normal`/`others`, default is normal. 状态, 默认是 normal
+      tags:
+        - game
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/query_multiple_platform_game_history_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/query_multiple_platform_game_history_result"
+  /kickout_player:
+    post:
+      summary: kickout player 踢出游戏
+      description: |
+        kickout player 踢出游戏
+
+        - game_platform_id (optional): If there is a game_platform_id parameter in the request and game provider supports logout API, it will logout player in game only, else it will return code 43 if not supported.
+            Otherwise, if there is no game_platform_id in the request, it will logout and clear player session.
+      tags:
+        - player
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/kickout_player_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/kickout_player_result"
+
+  /block_player:
+    post:
+      summary: block player 禁用玩家
+      description: |
+        block player 禁用玩家
+      tags:
+        - player
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/block_player_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/block_player_result"
+
+  /unblock_player:
+    post:
+      summary: unblock player 启用玩家
+      description: |
+        unblock player 启用玩家
+      tags:
+        - player
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/unblock_player_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/unblock_player_result"
+
+  /query_player_status:
+    post:
+      summary: query player status 查询玩家状态
+      description: |
+        query player status 查询玩家状态
+
+        ## request 参数
+
+        - game_platform_id:
+          if game_platform_id is empty, will query this player for all game 如果 game_platform_id 是空，就会在所有游戏商中查询这个玩家的状态
+
+          if game_platform_id is not empty, only query this player for this game platform 如果 game_platform_id 不是空，就只在这个游戏商中查询这个玩家的状态
+      tags:
+        - player
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/query_player_status_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/query_player_status_result"
+  /query_remote_wallet_transaction:
+    post:
+      summary: query remote wallet transaction 查询远程钱包的交易状态
+      description: |
+        query remote wallet transaction 查询远程钱包的交易状态
+
+        ## request 参数
+
+        - uniqueid: uniqueid, it's from remote wallet service. 唯一id, 来自远程钱包服务
+      tags:
+        - player
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/query_remote_wallet_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/query_remote_wallet_result"
+  /query_game_list:
+    post:
+      summary: query game list 查询游戏列表
+      description: |
+        query game list 查询游戏列表
+
+        - category_mode: none/game_type_first/game_platform_first
+        - last_update_time: only query updated_at >= last_update_time, format: `2022-10-01 10:00:00`
+            只查询 updated_at >= last_update_time, 格式: `2022-10-01 10:00:00`
+      tags:
+        - game
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/query_game_list_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/query_game_list_result"
+
+  /cancel_token:
+    post:
+      summary: cancel auth token 取消token
+      description: |
+        cancel auth token 取消token
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/cancel_token_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/cancel_token_result"
+
+  /create_free_round:
+    post:
+      summary: create free round 创建免费投注
+      description: |
+        create free round(not support yet) 创建免费投注 (暂时不支持)
+
+        ## request 参数
+        - game_unique_id_list: array of game_unique_id, it's from game list. 游戏唯一id列表, 来自游戏列表
+        - count_round: count of free round 免费投注的数量
+        - expiration_date: expiration date, format: `2022-10-01 10:00:00` 过期时间, 格式: `2022-10-01 10:00:00`
+        - extra_settings
+          - start_time: start time, format: `2022-10-01 10:00:00` 开始时间, 格式: `2022-10-01 10:00:00`
+          - end_time: end time, format: `2022-10-01 10:00:00` 结束时间, 格式: `2022-10-01 10:00:00`
+
+        ## response 参数
+        - free_round_transaction_id: free round transaction id 免费投注交易id
+      tags:
+        - freeround
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/create_free_round_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/create_free_round_result"
+  /cancel_free_round:
+    post:
+      summary: cancel free round 取消免费投注
+      description: |
+        cancel free round (not support yet) 取消免费投注 (暂时不支持)
+
+        ## request 参数
+          - free_round_transaction_id: free round transaction id 免费投注交易id
+      tags:
+        - freeround
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/cancel_free_round_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/cancel_free_round_result"
+  /query_free_round:
+    post:
+      summary: query free round 查询免费投注
+      description: |
+        query free round(not support yet) 查询免费投注 (暂时不支持)
+
+        ## request 参数
+          - free_round_transaction_id: free round transaction id 免费投注交易id
+      tags:
+        - freeround
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/query_free_round_request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/query_free_round_result"
+
+
+components:
+  schemas:
+    GameDetail:
+      type: object
+      properties:
+        game_platform_id:
+          type: integer
+        game_unique_id:
+          type: string
+        game_name:
+          type: object
+          additionalProperties:
+            type: string
+          description: see language part, 请看语言部分
+        status:
+          type: integer
+          enum:
+            - 0
+            - 1
+        updated_at:
+          type: string
+          example: "2022-10-01 10:00:00"
+        enabled_in_website:
+          type: boolean
+        is_new_game:
+          type: boolean
+        enabled_on_android:
+          type: boolean
+        enabled_on_ios:
+          type: boolean
+        game_type_code:
+          type: string
+        game_type_status:
+          type: integer
+          enum:
+            - 0
+            - 1
+        game_type_name:
+          type: object
+          additionalProperties:
+            type: string
+          description: see language part, 请看语言部分
+        enabled_on_desktop:
+          type: boolean
+        screen_mode:
+          type: string
+          enum:
+            - landscape
+            - portrait
+            - both
+        demo_enable:
+          type: boolean
+      required:
+        - game_platform_id
+        - game_unique_id
+        - game_name
+        - status
+        - updated_at
+        - enabled_in_website
+        - is_new_game
+        - enabled_on_android
+        - enabled_on_ios
+        - game_type_code
+        - game_type_status
+        - game_type_name
+        - demo_enable
+    GameListCategoryMode:
+      type: string
+      enum:
+        - none
+        - game_type_first
+        - game_platform_first
+
+    #==== request model========================
+    ping_request:
+      type: object
+      properties:
+        ping:
+          type: boolean
+          example: true
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+      required:
+        - ping
+        - currency
+        - sign
+        - merchant_code
+    generate_token_request:
+      type: object
+      properties:
+        merchant_code:
+          type: string
+        secure_key:
+          type: string
+        force_new:
+          type: boolean
+          default: false
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+        currency:
+          type: string
+          maxLength: 20
+      required:
+        - merchant_code
+        - secure_key
+        - sign
+        - currency
+    query_game_platform_list_request:
+      type: object
+      properties:
+        merchant_code:
+          type: string
+        auth_token:
+          type: string
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+        currency:
+          type: string
+          maxLength: 20
+      required:
+        - merchant_code
+        - auth_token
+        - sign
+        - currency
+    query_remote_wallet_request:
+      type: object
+      required:
+        - merchant_code
+        - auth_token
+        - currency
+        - uniqueid
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        uniqueid:
+          type: string
+        game_platform_id:
+          type: integer
+    create_player_request:
+      type: object
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        username:
+          type: string
+          maxLength: 250
+        password:
+          type: string
+          maxLength: 50
+        realname:
+          type: string
+          maxLength: 200
+        lock_when_create_player_account:
+          type: boolean
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+      required:
+        - username
+        - password
+        - sign
+        - merchant_code
+        - auth_token
+        - currency
+    block_player_request:
+      type: object
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        username:
+          type: string
+          maxLength: 250
+        game_platform_id:
+          type: integer
+          description: |
+            if game_platform_id is empty, will block this player for all game
+
+            如果 game_platform_id 是空，就会在所有游戏商中禁用这个玩家
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+      required:
+        - username
+        - sign
+        - merchant_code
+        - auth_token
+        - currency
+    unblock_player_request:
+      type: object
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        username:
+          type: string
+          maxLength: 250
+        game_platform_id:
+          type: integer
+          description: |
+            if game_platform_id is empty, will unblock this player for all game
+
+            如果 game_platform_id 是空，就会在所有游戏商中启用这个玩家
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+      required:
+        - username
+        - sign
+        - merchant_code
+        - auth_token
+        - currency
+    query_player_status_request:
+      type: object
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        username:
+          type: string
+          maxLength: 250
+        game_platform_id:
+          type: integer
+          description: |
+            if game_platform_id is empty, will query this player for all game
+
+            如果 game_platform_id 是空，就会在所有游戏商中查询这个玩家的状态
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+      required:
+        - username
+        - sign
+        - merchant_code
+        - auth_token
+        - currency
+    kickout_player_request:
+      type: object
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        username:
+          type: string
+          maxLength: 250
+        game_platform_id:
+          type: integer
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+      required:
+        - username
+        - sign
+        - merchant_code
+        - auth_token
+        - currency
+    query_game_launcher_request:
+      description: |
+        username is required when game_mode=real
+
+        如果 game_mode是 real , username 是必填的
+      type: object
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        username:
+          type: string
+          maxLength: 250
+        game_platform_id:
+          type: integer
+        game_unique_id:
+          type: string
+          maxLength: 250
+        game_type:
+          type: string
+          maxLength: 250
+        is_mobile:
+          type: boolean
+        game_mode:
+          type: string
+          description: real/trial/tournament, 真实/演示/比赛
+          example: real
+          enum:
+            - real
+            - trial
+            - tournament
+        language:
+          type: string
+          maxLength: 50
+          description: see language part, 请看语言部分
+        extra_settings:
+          type: object
+          description: it's optional，可选
+          properties:
+            is_redirect:
+              description: false=launch inside iframe, true=redirect to game link. false=游戏运行在iframe里, true=重定向到游戏链接
+              type: boolean
+              default: false
+            home_link:
+              type: string
+              description: 返回首页地址
+            cashier_link:
+              type: string
+              description: 存取款的地址
+            logo_link:
+              type: string
+              description: logo 地址
+            on_error_redirect:
+              type: string
+              description: 发生错误跳去的地址
+            try_get_real_url:
+              type: boolean
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+      required:
+        - sign
+        - merchant_code
+        - auth_token
+        - is_mobile
+        - game_platform_id
+        - game_mode
+        - currency
+    query_game_lobby_launcher_request:
+      type: object
+      description: |
+        username is required when game_mode=real
+
+        如果 game_mode是 real , username 是必填的
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        username:
+          type: string
+          maxLength: 250
+        game_platform_id:
+          type: integer
+        game_type:
+          type: string
+          maxLength: 250
+        lobby_mode:
+          type: string
+          enum:
+            - game_platform
+            - game_type
+            - local
+        is_mobile:
+          type: boolean
+        game_mode:
+          type: string
+          description: real/trial/tournament
+          example: real
+          enum:
+            - real
+            - trial
+            - tournament
+        language:
+          type: string
+          maxLength: 50
+        extra_settings:
+          type: object
+          description: it's optional，可选
+          properties:
+            home_link:
+              type: string
+              description: 返回首页地址
+            cashier_link:
+              type: string
+              description: 存取款的地址
+            logo_link:
+              type: string
+              description: logo 地址
+            on_error_redirect:
+              type: string
+              description: 发生错误跳去的地址
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+      required:
+        - sign
+        - merchant_code
+        - auth_token
+        - is_mobile
+        - game_platform_id
+        - game_mode
+        - currency
+    query_bet_detail_link_request:
+      type: object
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        username:
+          type: string
+          maxLength: 250
+        game_platform_id:
+          type: integer
+        bet_detail_id:
+          type: string
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+      required:
+        - username
+        - game_platform_id
+        - bet_detail_id
+        - sign
+        - merchant_code
+        - auth_token
+        - currency
+    query_multiple_platform_game_history_request:
+      type: object
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        username:
+          type: string
+          maxLength: 250
+        multiple_game_platform:
+          type: array
+          description: game platform id 游戏商id
+          items:
+            type: integer
+        from:
+          type: string
+          maxLength: 20
+          example: "2022-10-01 10:00:00"
+        to:
+          type: string
+          maxLength: 20
+          example: "2022-10-01 10:00:00"
+        date_mode:
+          type: string
+          maxLength: 20
+          default: by_last_update_time
+          enum:
+            - by_last_update_time
+            - by_bet_time
+          example: "by_last_update_time"
+          description: |
+            by_last_update_time/by_bet_time 最后更新时间/投注时间
+        page_number:
+          type: integer
+          example: 1
+        size_per_page:
+          type: integer
+          example: 1000
+        game_history_status:
+          type: string
+          default: normal
+          example: normal
+          enum:
+            - normal
+            - others
+          description: |
+            normal/others  普通/其他状态
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+      required:
+        - sign
+        - merchant_code
+        - auth_token
+        - currency
+        - from
+        - to
+        - page_number
+        - size_per_page
+        - multiple_game_platform
+        - status
+    cancel_token_request:
+      type: object
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+      required:
+        - merchant_code
+        - sign
+        - auth_token
+        - currency
+    query_game_list_request:
+      type: object
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        category_mode:
+          $ref: "#/components/schemas/GameListCategoryMode"
+        game_platform_id:
+          type: integer
+        game_type_code:
+          type: string
+          maxLength: 100
+        game_unique_id:
+          type: string
+          maxLength: 100
+        image_mode:
+          type: string
+          enum:
+            - landscape
+            - portrait
+        last_update_time:
+          description: |
+            format: `2022-10-01 10:00:00`,
+            query by last update time, if empty, will get all games.
+            按最后更新时间查询, 如果为空, 就获取所有游戏
+          type: string
+        sign:
+          type: string
+          minLength: 40
+          maxLength: 64
+      required:
+        - merchant_code
+        - sign
+        - auth_token
+        - currency
+        - category_mode
+
+    #==== result model========================
+    generate_token_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            auth_token:
+              type: string
+              minLength: 32
+              maxLength: 64
+            timeout_datetime:
+              type: string
+              example: "2022-10-01 10:00:00"
+            player_prefix:
+              type: string
+            timezone:
+              description: "`America/Sao_Paulo` , `Asia/Hong_Kong`"
+              type: string
+              example: "Asia/Hong_Kong"
+            available_games:
+              $ref: "#/components/schemas/GamePlatformList"
+          required:
+            - auth_token
+            - timeout_datetime
+            - player_prefix
+            - available_games
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    query_game_platform_list_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          $ref: "#/components/schemas/GamePlatformList"
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    GamePlatformList:
+      type: array
+      items:
+        type: object
+        properties:
+          id:
+            type: integer
+          system_code:
+            type: string
+          prefix_for_username:
+            description: prefix for username, 用户名前缀
+            type: string
+          suffix_for_username:
+            type: string
+          transfer_min_amount:
+            description: only for transfer game platform, 只有转账游戏商有
+            type: string
+          transfer_max_amount:
+            description: only for transfer game platform, 只有转账游戏商有
+            type: string
+          is_active:
+            description: true=game is active, false=game is not active, 游戏是否启用
+            type: boolean
+          is_maintenance:
+            description: true=game is under maintenance, false=game is not under maintenance, 游戏是否在维护
+            type: boolean
+          updated_at:
+            type: string
+            example: "2022-10-01 10:00:00"
+          launcher_mode:
+            type: string
+            enum:
+              - lobbyAndSingle
+              - lobbyOnly
+              - singleOnly
+          lobby_list:
+            type: array
+            items:
+              type: object
+              properties:
+                game_type_code:
+                  type: string
+                enabled_in_website:
+                  type: boolean
+                enabled_on_android:
+                  type: boolean
+                enabled_on_ios:
+                  type: boolean
+                enabled_on_desktop:
+                  type: boolean
+                screen_mode:
+                  type: string
+                  enum:
+                    - landscape
+                    - portrait
+                    - both
+                demo_enable:
+                  type: boolean
+    query_remote_wallet_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - pending
+                - declined
+                - approved
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    create_player_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            username:
+              type: string
+          required:
+            - username
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    block_player_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            blocked:
+              type: boolean
+          required:
+            - blocked
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    unblock_player_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            blocked:
+              type: boolean
+          required:
+            - blocked
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    query_player_status_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            blocked:
+              description: true=player is blocked, false=player is not blocked, 玩家是否被禁用
+              type: boolean
+            existed:
+              description: true=player is existed, false=player is not existed, 玩家是否存在
+              type: boolean
+          required:
+            - blocked
+            - existed
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    kickout_player_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            kicked:
+              type: boolean
+          required:
+            - kicked
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    query_game_launcher_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            launcher:
+              type: object
+              properties:
+                url:
+                  type: string
+              required:
+                - url
+          required:
+            - launcher
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    query_game_lobby_launcher_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            launcher:
+              type: object
+              properties:
+                url:
+                  type: string
+              required:
+                - url
+          required:
+            - launcher
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    query_bet_detail_link_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            url:
+              type: string
+          required:
+            - url
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    query_game_list_result:
+      description: |
+        ```
+        if category_mode is none then
+          return [{game info}, {game info}]
+        if category_mode is game_type_first then
+          return {
+            <game type>:{
+              <game platform id>: [
+                {game info}, {game info}
+              ]
+            }
+          }
+        if category_mode is game_platform_first then
+          return {
+            <game platform id>:{
+              <game type>: [
+                {game info}, {game info}
+              ]
+            }
+          }
+        ```
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            total:
+              type: integer
+            list:
+              type: array
+              items:
+                # description: see GameDetail
+                # type: object
+                # example: "{GameDetail}"
+                $ref: '#/components/schemas/GameDetail'
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    query_multiple_platform_game_history_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            game_history:
+              type: array
+              items:
+                type: object
+                properties:
+                  uniqueid:
+                    type: string
+                  username:
+                    type: string
+                  player_username:
+                    type: string
+                  merchant_code:
+                    type: string
+                  game_platform_id:
+                    type: integer
+                  game_code:
+                    type: string
+                  game_name:
+                    type: string
+                    description: see language part, 请看语言部分
+                  game_details:
+                    type: string
+                  game_finish_time:
+                    type: string
+                    example: "2022-10-01 10:00:00"
+                  bet_details:
+                    type: string
+                  bet_time:
+                    type: string
+                    example: "2022-10-01 10:00:00"
+                  payout_time:
+                    type: string
+                    example: "2022-10-01 10:00:00"
+                  updated_at:
+                    type: string
+                    example: "2022-10-01 10:00:00"
+                  round_number:
+                    type: string
+                  real_bet_amount:
+                    type: number
+                  effective_bet_amount:
+                    type: number
+                  result_amount:
+                    type: number
+                  payout_amount:
+                    type: number
+                  rent:
+                    type: number
+                  odds:
+                    type: string
+                  after_balance:
+                    type: number
+                  game_external_uniqueid:
+                    type: string
+                    maxLength: 200
+                  external_uniqueid:
+                    type: string
+                    maxLength: 205
+                  md5_sum:
+                    type: string
+                  ip_address:
+                    type: string
+                  bet_type:
+                    type: string
+                  odds_type:
+                    type: string
+                  update_version:
+                    type: integer
+                  game_status:
+                    type: string
+                  detail_status:
+                    type: integer
+                    description: 1=settled, 2=pending, 3=accepted, 4=rejected, 5=cancelled, 6=void, 7= refund, 8=settled no payout, 9=unsettled
+            total_pages:
+              type: number
+              example: 1
+            current_page:
+              type: number
+              example: 1
+            total_rows_current_page:
+              type: number
+              example: 0
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    cancel_token_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            logout:
+              type: boolean
+              example: true
+          required:
+            - logout
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    ping_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          properties:
+            pong:
+              type: boolean
+              example: true
+          required:
+            - pong
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    create_free_round_request:
+      type: object
+      required:
+        - merchant_code
+        - currency
+        - auth_token
+        - username
+        - game_platform_id
+        - game_unique_id_list
+        - count_round
+        - expiration_date
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        username:
+          type: string
+          maxLength: 250
+        game_platform_id:
+          type: integer
+        game_unique_id_list:
+          type: array
+          items:
+            type: string
+        count_round:
+          description: count of free round
+          type: integer
+        expiration_date:
+          type: string
+        extra_settings:
+          type: object
+          properties:
+            start_time:
+              type: string
+            end_time:
+              type: string
+    create_free_round_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          required:
+            - free_round_transaction_id
+          properties:
+            free_round_transaction_id:
+              type: string
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    cancel_free_round_request:
+      type: object
+      required:
+        - merchant_code
+        - currency
+        - auth_token
+        - free_round_transaction_id
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        free_round_transaction_id:
+          type: string
+    cancel_free_round_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          required:
+            - cancelled
+          properties:
+            cancelled:
+              type: boolean
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+    query_free_round_request:
+      type: object
+      required:
+        - merchant_code
+        - currency
+        - auth_token
+        - username
+        - free_round_transaction_id
+      properties:
+        merchant_code:
+          type: string
+        currency:
+          type: string
+          maxLength: 20
+        auth_token:
+          type: string
+          minLength: 32
+          maxLength: 64
+        username:
+          type: string
+        free_round_transaction_id:
+          type: string
+    query_free_round_result:
+      type: object
+      properties:
+        code:
+          type: integer
+        version:
+          type: string
+          example: "2.02"
+        request_id:
+          type: string
+          minLength: 32
+          maxLength: 32
+          example: "4c83f53e51295bda6c43adbd56f469b9"
+        server_time:
+          type: string
+          example: "2022-10-01 10:00:00"
+        cost:
+          type: integer
+          description: cost of this request, ms
+        external_request_id:
+          type: string
+        detail:
+          type: object
+          required:
+            - free_round_list
+          properties:
+            free_round_list:
+              type: array
+              items:
+                type: object
+                required:
+                  - game_platform_id
+                  - game_unique_id_list
+                  - count_round
+                  - expiration_date
+                properties:
+                  game_platform_id:
+                    type: integer
+                  game_unique_id_list:
+                    type: array
+                    items:
+                      type: string
+                  count_round:
+                    description: count of free round
+                    type: integer
+                  expiration_date:
+                    type: string
+                  extra_settings:
+                    type: object
+                    properties:
+                      start_time:
+                        type: string
+                      end_time:
+                        type: string
+
+      required:
+        - code
+        - version
+        - request_id
+        - server_time
+        - cost
+        - detail
+
+  securitySchemes:
+    DebugSignKey:
+      type: apiKey
+      in: query
+      name: X-DEBUG-SIGN-KEY
