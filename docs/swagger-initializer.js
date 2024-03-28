@@ -5,8 +5,8 @@ window.onload = function() {
   window.ui = SwaggerUIBundle({
     // url: "swagger.yaml",
     urls: [
-      {url: "/seamless-gateway-api.yml", name: "Seamless Gateway"},
-      {url: "/remote-wallet.yml", name: "Remote Wallet"}
+      {url: "seamless-gateway-api.yml", name: "Seamless Gateway"},
+      {url: "remote-wallet.yml", name: "Remote Wallet"}
     ],
     dom_id: '#swagger-ui',
     deepLinking: true,
