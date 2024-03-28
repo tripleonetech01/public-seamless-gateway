@@ -3,7 +3,7 @@ info:
   title: Remote Wallet API
   description: |
     Remote Wallet Service 远程钱包服务
-    # test
+
     ## Preparation 准备
       - api url: url of remote wallet service 提供远程钱包服务的url
       - auth_token: fixed password 固定密码
