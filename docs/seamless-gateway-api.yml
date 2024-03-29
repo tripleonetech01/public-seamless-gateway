@@ -223,6 +223,8 @@ info:
       - username is unique in merchant/game platform/gateway. username 在商户/游戏商/网关内是唯一的
       - username is case insensitive. username 不区分大小写
       - username is always with prefix, gateway will set the prefix of player to merchant. username 总是有前缀的, 网关会把玩家的前缀设置给商户
+      - max size of username is 50. username的最大长度是50
+      - only allow alpha-numeric. 只允许字母数字
 
     ### a specific game 一个游戏 = `game_platform_id` + `game_unique_id`
 
@@ -347,7 +349,7 @@ info:
     - game_status: game status, normal/others. 游戏状态, 正常/其他
     - detail_status: detail status, 1=settled, 2=pending, 3=accepted, 4=rejected, 5=cancelled, 6=void, 7= refund, 8=settled no payout, 9=unsettled. it's from game platform
 
-  version: "1.15"
+  version: "1.16"
 servers:
   - url: http://admin.seamlessgateway.local/seamless-gateway
     description: local
@@ -995,7 +997,7 @@ components:
           maxLength: 64
         username:
           type: string
-          maxLength: 250
+          maxLength: 50
         password:
           type: string
           maxLength: 50
@@ -1029,7 +1031,6 @@ components:
           maxLength: 64
         username:
           type: string
-          maxLength: 250
         game_platform_id:
           type: integer
           description: |
@@ -1060,7 +1061,6 @@ components:
           maxLength: 64
         username:
           type: string
-          maxLength: 250
         game_platform_id:
           type: integer
           description: |
@@ -1091,7 +1091,6 @@ components:
           maxLength: 64
         username:
           type: string
-          maxLength: 250
         game_platform_id:
           type: integer
           description: |
@@ -1122,7 +1121,6 @@ components:
           maxLength: 64
         username:
           type: string
-          maxLength: 250
         game_platform_id:
           type: integer
         sign:
@@ -1153,7 +1151,6 @@ components:
           maxLength: 64
         username:
           type: string
-          maxLength: 250
         game_platform_id:
           type: integer
         game_unique_id:
@@ -1228,7 +1225,6 @@ components:
           maxLength: 64
         username:
           type: string
-          maxLength: 250
         game_platform_id:
           type: integer
         game_type:
@@ -1295,7 +1291,6 @@ components:
           maxLength: 64
         username:
           type: string
-          maxLength: 250
         game_platform_id:
           type: integer
         bet_detail_id:
@@ -1326,7 +1321,6 @@ components:
           maxLength: 64
         username:
           type: string
-          maxLength: 250
         multiple_game_platform:
           type: array
           description: game platform id 游戏商id
@@ -2186,7 +2180,6 @@ components:
           maxLength: 64
         username:
           type: string
-          maxLength: 250
         game_platform_id:
           type: integer
         game_unique_id_list:
