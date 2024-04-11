@@ -296,6 +296,38 @@ info:
 
     ## Game History 游戏记录
 
+    ### How to sync game history 如何同步游戏记录
+
+    #### Real time sync 实时同步
+
+    - adjust server time to standard time(may use ntp service) 调整服务器时间到标准时间 (可以使用ntp服务)
+    - set date_mode to `by_last_update_time` 设置 date_mode 为 `by_last_update_time`
+    - first call 第一次调用
+      - set `from` to (current time - 4 minutes) 设置 `from` 为 (当前时间 - 4分钟)
+        - for example: current time is `2022-10-01 10:00:00`, then `from` is `2022-10-01 09:56:00`
+        - 例如: 当前时间是 `2022-10-01 10:00:00`, 那么 `from` 是 `2022-10-01 09:56:00`
+      - set `to` to (current time - 2 minutes) 设置 `to` 为 (当前时间 - 2分钟)
+        - for example: current time is `2022-10-01 10:00:00`, then `to` is `2022-10-01 09:58:00`
+        - 例如: 当前时间是 `2022-10-01 10:00:00`, 那么 `to` 是 `2022-10-01 09:58:00`
+      - call `/query_multiple_platform_game_history` with `from`,`to` 调用 `/query_multiple_platform_game_history` 传入参数 `from`,`to`
+        - for example: `from` is `2022-10-01 09:56:00`, `to` is `2022-10-01 09:58:00`
+        - 例如: `from` 是 `2022-10-01 09:56:00`, `to` 是 `2022-10-01 09:58:00`
+      - process response (sync to db) 处理返回结果 (同步到数据库)
+    - sleep few seconds (for example: 10 seconds) 休眠几秒钟 (例如: 10秒)
+    - repeatly call 重复调用
+      - set `from` to last `to`, 设置 `from` 为上次的 `to`
+        - for example: last `to` is `2022-10-01 09:58:00`, then `from` is `2022-10-01 09:58:00`
+        - 例如: 上次的 `to` 是 `2022-10-01 09:58:00`, 那么 `from` 是 `2022-10-01 09:58:00`
+      - set `to` to (current time - 2 minutes) 设置 `to` 为 (当前时间 - 2分钟)
+        - for example: current time is `2022-10-01 10:00:30`, then `to` is `2022-10-01 09:58:30`
+        - 例如: 当前时间是 `2022-10-01 09:58:30`, 那么 `to` 是 `2022-10-01 09:58:30`
+      - call `/query_multiple_platform_game_history` again 再次调用 `/query_multiple_platform_game_history`
+
+    #### Manually sync 手动同步
+
+    - set date_mode to `by_bet_time` 设置 date_mode 为 `by_bet_time`
+    - call `/query_multiple_platform_game_history` with `from`,`to` 调用 `/query_multiple_platform_game_history` 传入参数 `from`,`to`
+
     ### NOTES 注意
 
     #### Parameters 参数
@@ -559,8 +591,8 @@ paths:
       description: |
         query multiple platform game history 查询游戏记录，允许同时查询多个游戏商
 
-        real time/auto sync 实时/自动同步: set date_mode to `by_last_update_time` 设置 date_mode 为 `by_last_update_time`
-        manually sync 手动同步: set date_mode to `by_bet_time` 设置 date_mode 为 `by_bet_time`
+        - real time/auto sync 实时/自动同步: set date_mode to `by_last_update_time` 设置 date_mode 为 `by_last_update_time`
+        - manually sync 手动同步: set date_mode to `by_bet_time` 设置 date_mode 为 `by_bet_time`
 
         ## request 参数
 
