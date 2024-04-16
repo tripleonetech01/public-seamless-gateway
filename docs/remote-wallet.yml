@@ -11,12 +11,11 @@ info:
 
     ## How to Sign 签名
 
+    - please include all fields in request, 请包含所有请求字段
     - sort by key name (a-z) 按名字排序，字母正序
-    	- don't sort by value
+    	- don't sort by value 不要按值排序
     - concat all non-empty values without array/object type. 拼接所有的非空内容，要去掉数组/对象类型
       - boolean: only `true/false` ，只使用 `true/false`
-      - float/number: remove last 0 on decimal. 去掉小数部分末尾的0
-        - example: `1.90` to `1.9`
     - append sign key to last. 把 sign key 放到最后
     - use sha1 to generate sign. 使用sha1产生签名
 

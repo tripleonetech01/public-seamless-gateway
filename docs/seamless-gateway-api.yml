@@ -6,6 +6,8 @@ info:
 
     ## How to Sign 签名
 
+    - please include all fields in request. 请包含所有的请求字段
+      - remove array/object type. 去掉数组/对象类型
     - sort by key name (a-z) 按名字排序，字母正序
     	- don't sort by value
     - concat all non-empty values without array/object type. 拼接所有的非空内容，要去掉数组/对象类型
