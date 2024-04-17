@@ -205,17 +205,17 @@ components:
             amount:
               type: string
               description: |
-                only allow positive. 只允许正数
+                only allow >=0.
             bet_amount:
               type: string
               description: |
-                only allow positive. 只允许正数
+                only allow >=0.
 
                 only when action_type='bet-payout'
             payout_amount:
               type: string
               description: |
-                only allow positive. 只允许正数
+                only allow >=0.
 
                 only when action_type='bet-payout'
             currency:
@@ -251,17 +251,17 @@ components:
             amount:
               type: string
               description: |
-                only allow positive. 只允许正数
+                only allow >=0.
             bet_amount:
               type: string
               description: |
-                only allow positive. 只允许正数
+                only allow >=0.
 
                 only when action_type='bet-payout'
             payout_amount:
               type: string
               description: |
-                only allow positive. 只允许正数
+                only allow >=0.
 
                 only when action_type='bet-payout'
             currency:
