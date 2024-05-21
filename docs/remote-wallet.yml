@@ -60,6 +60,7 @@ info:
     - 1.04, add `/batch_update`
     - 1.05, add `bet_amount` and `payout_amount` for `bet-payout` action type, add more code, add `bet-payout` and `adjustment`
     - 1.06, add `is_end` to `/increase_balance` and `/decrease_balance`
+    - 1.07, add `related_uniqueid` to `/increase_balance` and `/decrease_balance`
 
     ## Result Code 返回代码
 
@@ -103,6 +104,19 @@ info:
         - NOTICE: remove `game-` from remote_wallet.uniqueid. 注意: remote_wallet.uniqueid去掉 `game-` 前缀
       - remote_wallet.game_uniqueid=game_history.game_code, it's for single game. 这是指单个游戏
       - return CODE_DOUBLE_UNIQUEID=8 if uniqueid exists, 如果 uniqueid 存在，返回 CODE_DOUBLE_UNIQUEID=8
+
+    ## related_uniqueid 相关唯一编号
+
+      it's used for related request, 用于相关请求
+
+      - for cancel/refund, it's point to bet/payout request. 对于cancel/refund，指向bet/payout请求
+      - for payout, it's point to bet request. 对于payout，指向bet请求
+
+    ### Example of related_uniqueid
+      - bet request: uniqueid=game-1-123, related_uniqueid=null
+      - payout request: uniqueid=game-1-124, related_uniqueid=game-1-123, validate if bet request exists. 验证bet请求是否存在
+      - cancel/refund bet request: uniqueid=game-1-125, related_uniqueid=game-1-123, validate if bet request exists. 验证bet请求是否存在
+      - cancel/refund payout request: uniqueid=game-1-126, related_uniqueid=game-1-124, validate if payout request exists. 验证payout请求是否存在
 
     ## round_id 局号
       - it's not unqiue, could be duplicated, 不是唯一的，可能重复
@@ -192,6 +206,11 @@ components:
             round id of game. 游戏的局号
         action_type:
           $ref: "#/components/schemas/ActionType"
+        related_uniqueid:
+          type: string
+          maxLength: 200
+          description: |
+            related unique id, point to related request. 相关的唯一编号，指向相关的请求
     increase_balance_request:
       allOf:
         - $ref: "#/components/schemas/GameInfoRequest"

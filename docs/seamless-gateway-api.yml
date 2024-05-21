@@ -162,6 +162,7 @@ info:
       const CODE_INVALID_FREE_ROUND_TRANSACTION_ID=41; // 错误的免费投注交易id
       const CODE_GAME_PLATFORM_DOES_NOT_SUPPORT_BET_DETAIL_LINK=42;
       const CODE_UNIMPLEMENTED=43;
+      const CODE_GAME_DOES_NOT_SUPPORT_LOBBY=44;
 
       //system
       const CODE_INVALID_REQUEST=9997;  // 错误的请求
